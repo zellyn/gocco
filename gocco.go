@@ -27,7 +27,6 @@ import (
 	"bytes"
 	"container/list"
 	"flag"
-	"github.com/russross/blackfriday"
 	"io"
 	"io/ioutil"
 	"log"
@@ -39,6 +38,8 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+
+	"github.com/russross/blackfriday"
 )
 
 // ## Types
@@ -72,6 +73,8 @@ type Language struct {
 	symbol string
 	// The regular expression to match the comment delimiter
 	commentMatcher *regexp.Regexp
+	// Skip pygments?
+	skipPygments bool
 	// Used as a placeholder so we can parse back Pygments output
 	// and put the sections together
 	dividerText string
@@ -178,6 +181,14 @@ func parse(source string, code []byte) *list.List {
 // and documentation for each `Section`
 func highlight(source string, sections *list.List) {
 	language := getLanguage(source)
+	if language.skipPygments {
+		for e := sections.Front(); e != nil; e = e.Next() {
+			fragment := e.Value.(*Section).codeText
+			e.Value.(*Section).CodeHTML = bytes.Join([][]byte{[]byte(highlightStart), []byte(highlightEnd)}, fragment)
+			e.Value.(*Section).DocsHTML = blackfriday.MarkdownCommon(e.Value.(*Section).docsText)
+		}
+		return
+	}
 	pygments := exec.Command("pygmentize", "-l", language.name, "-f", "html", "-O", "encoding=utf-8")
 	pygmentsInput, _ := pygments.StdinPipe()
 	pygmentsOutput, _ := pygments.StdoutPipe()
@@ -271,7 +282,22 @@ func setupLanguages() {
 	// you should add more languages here
 	// only the first two fields should change, the rest should
 	// be `nil, "", nil`
-	languages[".go"] = &Language{"go", "//", nil, "", nil}
+	languages[".go"] = &Language{
+		name:           "go",
+		symbol:         "//",
+		commentMatcher: nil,
+		skipPygments:   false,
+		dividerText:    "",
+		dividerHTML:    nil,
+	}
+	languages[".cue"] = &Language{
+		name:           "cue",
+		symbol:         "//",
+		commentMatcher: nil,
+		skipPygments:   true,
+		dividerText:    "",
+		dividerHTML:    nil,
+	}
 }
 
 func setup() {
